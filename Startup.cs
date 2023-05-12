@@ -1,11 +1,11 @@
 ﻿using Microsoft.Bot.Builder;
-using Microsoft.Bot.Builder.Integration.AspNet.Core;
-using Microsoft.Bot.Schema;
+//using Microsoft.Bot.Builder.Integration.AspNet.Core;
+//using Microsoft.Bot.Schema;
 using Microsoft.Graph.Communications.Common.Telemetry;
 using Microsoft.OpenApi.Models;
 using NotificationBot.Bot;
 using NotificationBot.SpeechService;
-using System.Collections.Concurrent;
+//using System.Collections.Concurrent;
 
 namespace NotificationBot
 {
@@ -28,8 +28,10 @@ namespace NotificationBot
             services.Configure<BotOptions>(_configuration.GetSection(BotOptions.Bot));
             services.Configure<SpeechServiceOptions>(_configuration.GetSection(SpeechServiceOptions.Speech));
             services.AddSingleton<IGraphLogger>(this._graphLogger);
-            services.AddTransient<CloudAdapter>();
-            services.AddTransient<ConcurrentDictionary<string, ConversationReference>>();
+
+            // Message Bot Services
+            //services.AddTransient<CloudAdapter>();
+            //services.AddTransient<ConcurrentDictionary<string, ConversationReference>>();
             services.AddControllers();
             
 
@@ -60,7 +62,7 @@ namespace NotificationBot
             services.AddEndpointsApiExplorer();
 
         }
-        public void Configure(Microsoft.AspNetCore.Builder.WebApplication app)
+        public void Configure(WebApplication app)
         {
             //if (app.Environment.IsDevelopment())
             //{

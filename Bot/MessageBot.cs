@@ -1,6 +1,6 @@
 ﻿using Microsoft.Bot.Builder;
-using Microsoft.Bot.Schema;
-using System.Collections.Concurrent;
+//using Microsoft.Bot.Schema;
+//using System.Collections.Concurrent;
 // Planned Implementation of Bot that sends Message
 namespace NotificationBot.Bot
 {
