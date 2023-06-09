@@ -23,72 +23,64 @@
     public class CallBot : ActivityHandler, ICallBot
     {
         // This is used to store the filenames as Key (unique) and madeCall.Id and a stopwatch (for voicemail timing) to keep track.
-        private Dictionary<string, (string, Stopwatch)> _callInstances = new();
-
+        private Dictionary<string , (string, Stopwatch)> callInstances = new();
         public string? UserName { get; private set; } = null;
-        private UserInputData? _userInputData = null;
-        private GraphServiceClient? _graphClient = null;
+        private GraphServiceClient? graphClient = null;
         private readonly Uri? botBaseUri;
         private readonly ILogger<CallBot> _logger;
-        private readonly IOptions<BotOptions> _botOptions;
         private readonly IGraphLogger _graphLogger;
         private readonly NotificationProcessor? notificationProcessor;
         private readonly CommsSerializer? serializer;
         private readonly string AppId;
         private readonly string AppSecret;
         private readonly int DurationBeforeVoiceMail;
-        //userId = e5edd89a-8717-41b5-97c2-d152fb77bc20
-        //TenantId = e62ef4b0-f598-416e-a8a1-d1946d558653
+        private readonly int TuningDurationForCorrectVoicemail;
+        private readonly string BotTeamsDisplayName;
+        private readonly string BotTeamsId;
         public CallBot(IOptions<BotOptions> botoptions, ILogger<CallBot> logger, IGraphLogger graphLogger)
         {
             // If you are unfamiliar to ASP.NET go read up Dependency Injection at least so you know why this constructor makes sense.
             var name = this.GetType().Assembly.GetName().Name;
-            _botOptions = botoptions;
             _logger = logger;
             _graphLogger = graphLogger;
-            AppId = _botOptions.Value.AppId;
-            AppSecret = _botOptions.Value.AppSecret;
-            botBaseUri = _botOptions.Value.BaseURL;
-            DurationBeforeVoiceMail = _botOptions.Value.DurationBeforeVoicemail;
+            AppId = botoptions.Value.AppId;
+            AppSecret = botoptions.Value.AppSecret;
+            botBaseUri = botoptions.Value.BaseURL;
+            DurationBeforeVoiceMail = botoptions.Value.DurationBeforeVoicemail;
+            TuningDurationForCorrectVoicemail = botoptions.Value.TuningDurationForCorrectVoicemail;
+            BotTeamsDisplayName = botoptions.Value.BotTeamsDisplayName;
+            BotTeamsId = botoptions.Value.BotTeamsId;
             serializer = new CommsSerializer();
             notificationProcessor = new NotificationProcessor(serializer);
             notificationProcessor.OnNotificationReceived += NotificationProcessor_OnNotificationReceived;
         }
 
         /// <summary>
-        /// Takes the <see cref="UserInputData"/> and returns a <see cref="GraphServiceClient"/>
+        /// Takes the tenantId from the POST method and returns a <see cref="GraphServiceClient"/>
         /// </summary>
         /// <returns>Returns a <see cref="GraphServiceClient"/> of the specified tenant</returns>
-        private GraphServiceClient CreateGraphServiceClient(UserInputData data)
+        private GraphServiceClient CreateGraphServiceClient(string tenantId)
         {
             // Using TenantId ,AppId and AppSecret to instanctiate an Graph Service Client
             var ops = new TokenCredentialOptions
             {
                 AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
             };
-            var clientSecretCred = new ClientSecretCredential(data.TenantId, clientId: AppId, clientSecret: AppSecret, ops);
+            var clientSecretCred = new ClientSecretCredential(tenantId, clientId: AppId, clientSecret: AppSecret, ops);
             return new GraphServiceClient(clientSecretCred);
 
         }
         /// <summary>
-        /// Calls user via GraphAPI
+        /// Calls Teams user via GraphAPI
         /// </summary>
         public async Task CallUserAsync(string userId, string TenantId, string text, Guid filename)
         {
-            this._userInputData = new UserInputData
-            {
-                UserId = userId,
-                TenantId = TenantId,
-                Text = text
-            };
-            this._graphClient = CreateGraphServiceClient(this._userInputData);
+            graphClient = CreateGraphServiceClient(TenantId);
             _logger.LogInformation("\n\n## CallUserAsync: Creating GraphServiceClient\n");
-
-
             try
             {
                 // Get DisplayName of userId and also test GraphServiceClient
-                var user = await this._graphClient.Users[this._userInputData.UserId].Request().GetAsync();
+                var user = await graphClient.Users[userId].Request().GetAsync();
                 UserName = user.DisplayName;
             }
             catch (ServiceException ex)
@@ -123,6 +115,7 @@
                     {
                         Application = new Identity
                         {
+                            DisplayName = BotTeamsDisplayName,
                             Id = AppId,
                         }
                     }
@@ -136,7 +129,7 @@
                         {
                             User = new Identity
                             {
-                                Id = _userInputData.UserId,
+                                Id = userId,
                             }
                         }
                     }
@@ -156,21 +149,18 @@
                 RequestedModalities = new List<Modality> { Modality.Audio },
                 Direction = CallDirection.Outgoing,
                 CallbackUri = new Uri(botBaseUri, "callback").ToString(),
-                TenantId = this._userInputData.TenantId,
+                TenantId = TenantId,
             };
             
             try
-            {   
+            {
+                _logger.LogInformation("\n\n## Calling user {username}", UserName);
                 // get Call Id
-                var madeCall = await this._graphClient.Communications.Calls.Request().AddAsync(call);
-
-                _logger.LogInformation(
-                    "\n\n## Calling user {username}" +
-                    "\n\n## Check callId from madecall: {callId}",
-                    UserName, madeCall.Id);
+                var madeCall = await graphClient.Communications.Calls.Request().AddAsync(call);
+                _logger.LogInformation("\n\n## madecall.Id: {callId}",madeCall.Id);
                 // Saves the instance of out-going call
                 (string, Stopwatch) entry = new(filename.ToString(), new Stopwatch());
-                _callInstances.Add(madeCall.Id, entry);
+                callInstances.Add(madeCall.Id, entry);
             }
             catch (ServiceException ex)
             {
@@ -193,6 +183,105 @@
         }
 
         /// <summary>
+        /// Calls phone number via GraphAPI (Need to apply for this service; 需要申請才可使用)
+        /// </summary>
+        public async Task CallPSTNAsync(string userId, string TenantId, string text, Guid filename)
+        {
+            graphClient = CreateGraphServiceClient(TenantId);
+            _logger.LogInformation("\n\n## CallPSTNAsync: Creating GraphServiceClient\n");
+
+            // Instantiate Call Object
+            var call = new Call
+            {
+                // Your Bot
+                Source = new ParticipantInfo
+                {
+                    Identity = new IdentitySet
+                    {
+                        AdditionalData = new Dictionary<string, object>
+                        {
+                            {
+                                "applicationInstance" , new
+                                {
+                                    DisplayName = BotTeamsDisplayName,
+                                    Id = AppId,
+                                }
+                            },
+                        },
+
+                    }
+                },
+                // User being called
+                Targets = new List<InvitationParticipantInfo>
+                {
+                    new InvitationParticipantInfo
+                    {
+                        Identity = new IdentitySet
+                        {
+                            AdditionalData = new Dictionary<string, object>
+                            {
+                                {
+                                    "phone" , new
+                                    {
+                                        Id = userId,
+                                    }
+                                },
+                            },
+
+                        }
+                    }
+
+                },
+                MediaConfig = new ServiceHostedMediaConfig()
+                {
+                    PreFetchMedia = new List<MediaInfo>()
+                    {
+                        new MediaInfo()
+                        {
+                            ResourceId = Guid.NewGuid().ToString(),
+                            Uri = new Uri(botBaseUri, $"{filename}.wav").ToString(),
+                        }
+                    }
+                },
+                RequestedModalities = new List<Modality> { Modality.Audio },
+                Direction = CallDirection.Outgoing,
+                CallbackUri = new Uri(botBaseUri, "callback").ToString(),
+                TenantId = TenantId,
+            };
+
+            try
+            {
+                // get Call Id
+                var madeCall = await graphClient.Communications.Calls.Request().AddAsync(call);
+
+                _logger.LogInformation(
+                    "\n\n## PSTN: Calling Phone number {phone number}" +
+                    "\n\n## PSTN: Check callId from madecall: {callId}",
+                    userId, madeCall.Id);
+                // Saves the instance of out-going call
+                (string, Stopwatch) entry = new(filename.ToString(), new Stopwatch());
+                callInstances.Add(madeCall.Id, entry);
+            }
+            catch (ServiceException ex)
+            {
+                if (ex.InnerException != null)
+                { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.InnerException.Message); }
+                else
+                { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.Message); }
+                throw ex;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("\n\n## PSTN: GraphServiceClient creation failed");
+                if (ex.InnerException != null)
+                { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.InnerException.Message); }
+                else
+                { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.Message); }
+
+                throw new Exception(ex.Message, ex);
+            }
+        }
+        /// <summary>
         /// Callback function of the Bot
         /// </summary>
         public async Task BotProcessNotificationAsync(HttpRequest request, HttpResponse response)
@@ -210,9 +299,14 @@
                 await response.WriteAsync(e.ToString()).ConfigureAwait(false);
             }
         }
+
+        /// <summary>
+        /// <see cref="NotificationProcessor"/> Triggers and runs this function<br/>
+        /// Which triggers <see cref="NotificationProcessorOnReceivedAsync"/> that checks the type and status of callback
+        /// </summary>
+        /// <param name="args"></param>
         private void NotificationProcessor_OnNotificationReceived(NotificationEventArgs args)
         {
-            // NotificationProcessor Triggers and runs this function
 #pragma warning disable 4014
             try
             {
@@ -231,18 +325,6 @@
         public async Task NotificationProcessorOnReceivedAsync(NotificationEventArgs args)
         {
             // From NotificationProcessor_OnNotificationReceived then starts to check what type and state the Notification is
-            if (this._graphClient == null && this._userInputData != null)
-            {
-                try
-                {
-                    this._graphClient = CreateGraphServiceClient(this._userInputData);
-                    _logger.LogInformation("\n\n## NotificationProcessorOnReceivedAsync: Creating GraphServiceClient\n");
-                }
-                catch
-                {
-                    throw;
-                }
-            }
 
             var headers = new[]
             {
@@ -274,15 +356,15 @@
                 if (call.State == CallState.Establishing)
                 {
                     // Begin counting call ringing duration 
-                    if (!_callInstances[perCallId].Item2.IsRunning)
+                    if (!callInstances[perCallId].Item2.IsRunning)
                     {
-                        _callInstances[perCallId].Item2.Start();
+                        callInstances[perCallId].Item2.Start();
                     }
                 }
                 if (call.State == CallState.Established && call.MediaState?.Audio == MediaState.Active)
                 {
                     // DurationBeforeVoiceMail is defaultly set to Teams default value (20 seconds) + 5s
-                    if (_callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail - 8) && _callInstances[perCallId].Item2.Elapsed < TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                    if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail - 8) && callInstances[perCallId].Item2.Elapsed < TimeSpan.FromSeconds(DurationBeforeVoiceMail))
                     {
                         // This logic check is to help debug voicemail
                         _logger.LogWarning(
@@ -291,18 +373,20 @@
                         "\n\n## If 'Time Elasped' when the call isn't picked up is just a bit short " +
                         "\n\n## Ex: Time Elapsed: {elapsed} but DurationBeforeVoicemail is {DurationBeforeVoicemail}" +
                         "\n\n## Solution: Set DurationBeforeVoicemail to below {elapsed} by 2 or 3 to {newSetTime}\n\n"
-                        , _callInstances[perCallId].Item2.Elapsed.TotalSeconds
-                        , _botOptions.Value.DurationBeforeVoicemail
-                        , _callInstances[perCallId].Item2.Elapsed.TotalSeconds
-                        , (int)_callInstances[perCallId].Item2.Elapsed.TotalSeconds - 3);
+                        , callInstances[perCallId].Item2.Elapsed.TotalSeconds
+                        , DurationBeforeVoiceMail
+                        , callInstances[perCallId].Item2.Elapsed.TotalSeconds
+                        , (int)callInstances[perCallId].Item2.Elapsed.TotalSeconds - 3);
                     }
-                    else if (_callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                    else if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail))
                     {
                         _logger.LogInformation(
                             "\n\n## User didn't pick up phone" +
                             "\n\n## Play Prompt to voicemail.");
                         // 9 seconds (default) seems to be a good duration for Teams voicemail to be prepare for recieving the prompt.
-                        await Task.Delay(_botOptions.Value.TuningDurationForCorrectVoicemail*1000); // Milliseconds so duration * 1000 
+                        // However this depends on user name length as a main factor
+                        // But still play around and test
+                        await Task.Delay(TuningDurationForCorrectVoicemail*1000); // Milliseconds so duration * 1000 
                     }
 
                     await BotPlayPromptAsync(perCallId).ConfigureAwait(false);
@@ -312,8 +396,8 @@
                 _logger.LogInformation(
                     "\n\n## Call instance: {instance}\n" +
                     "\n\n## Time Elapsed: {elapsed}\n",
-                    _callInstances[perCallId].Item1,
-                    _callInstances[perCallId].Item2.Elapsed.TotalSeconds);
+                    callInstances[perCallId].Item1,
+                    callInstances[perCallId].Item2.Elapsed.TotalSeconds);
             }
 
             // Play Prompt checks
@@ -334,14 +418,14 @@
 
                     // The playPromptOperation has been completed
                     // First delete the generated .wav file
-                    DeleteAudioFile(_callInstances[playPromptOperation.ClientContext].Item1);
+                    DeleteAudioFile(callInstances[playPromptOperation.ClientContext].Item1);
                     _logger.LogInformation("\n\n## Prompt finished playing\n");
 
                     // Hang up the call
-                    await this._graphClient.Communications.Calls[playPromptOperation.ClientContext].Request().DeleteAsync();
+                    await graphClient.Communications.Calls[playPromptOperation.ClientContext].Request().DeleteAsync();
 
                     // Release memory from _callInstances for finished operation
-                    _callInstances.Remove(_callInstances[playPromptOperation.ClientContext].Item1);
+                    callInstances.Remove(callInstances[playPromptOperation.ClientContext].Item1);
                 }
             }
 
@@ -377,24 +461,11 @@
         /// </summary>
         private async Task BotPlayPromptAsync(string callId)
         {
-            if (this._graphClient == null && this._userInputData != null)
-            {
-                try
-                {
-                    this._graphClient = CreateGraphServiceClient(this._userInputData);
-                    _logger.LogInformation("\n\n## BotPlayPromptAsync: Creating GraphServiceClient\n");
-                }
-                catch
-                {
-                    throw;
-                }
-            }
-
             _logger.LogInformation("\n\n## Accessing item in List (_callInstances)");
             _logger.LogInformation("\n\n## Found key: {key}", callId);
 
             // Get corresponding audio file ID from each call Id
-            var filename = _callInstances[callId].Item1;
+            var filename = callInstances[callId].Item1;
             var prompts = new Prompt[]
             {
                 new MediaPrompt
@@ -410,7 +481,7 @@
             try
             {
                 _logger.LogInformation("\n\n## Graph Client PlayPrompt Posting -->\n");
-                await this._graphClient.Communications.Calls[callId]
+                await graphClient.Communications.Calls[callId]
                 .PlayPrompt(
                 prompts: prompts,
                 clientContext: callId) // callId added to each PlayPrompt so we have infomation to track
@@ -425,12 +496,6 @@
 
                 throw ex;
             }
-        }
-        private class UserInputData
-        {
-            public string UserId { get; set; }
-            public string TenantId { get; set; }
-            public string Text { get; set; }
         }
     }
 }

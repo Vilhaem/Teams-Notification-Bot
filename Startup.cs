@@ -1,10 +1,12 @@
-﻿using Microsoft.Bot.Builder;
+﻿//using Microsoft.Bot.Builder;
 //using Microsoft.Bot.Builder.Integration.AspNet.Core;
 //using Microsoft.Bot.Schema;
 using Microsoft.Graph.Communications.Common.Telemetry;
 using Microsoft.OpenApi.Models;
 using NotificationBot.Bot;
 using NotificationBot.SpeechService;
+using NotificationBot.ApiKey;
+using System.Reflection;
 //using System.Collections.Concurrent;
 
 namespace NotificationBot
@@ -27,11 +29,13 @@ namespace NotificationBot
             services.AddRazorPages();
             services.Configure<BotOptions>(_configuration.GetSection(BotOptions.Bot));
             services.Configure<SpeechServiceOptions>(_configuration.GetSection(SpeechServiceOptions.Speech));
+            services.Configure<ApiKeyOption>(_configuration.GetSection(ApiKeyOption.ApiKey));
             services.AddSingleton<IGraphLogger>(this._graphLogger);
 
             // Message Bot Services
             //services.AddTransient<CloudAdapter>();
             //services.AddTransient<ConcurrentDictionary<string, ConversationReference>>();
+
             services.AddControllers();
             
 
@@ -55,13 +59,17 @@ namespace NotificationBot
                         Url = new Uri("https://example.com/license")
                     }
                 });
+                var xmlFilename = Path.Combine(AppContext.BaseDirectory, "Lab.Swashbuckle.AspNetCore6.xml");
+                options.IncludeXmlComments(xmlFilename);
             });
-            services.AddTransient<IBot,MessageBot>();   
+
+            //services.AddTransient<IBot,MessageBot>();   
             services.AddSingleton<ICallBot, CallBot>();
             //services.AddSingleton<INewClientBot, NewClientBot>();
             services.AddEndpointsApiExplorer();
 
         }
+
         public void Configure(WebApplication app)
         {
             //if (app.Environment.IsDevelopment())
@@ -69,7 +77,10 @@ namespace NotificationBot
 // Allows swagger UI to be used for testing when publish profile is set to Debug
 #if DEBUG
                 app.UseSwagger();
-                app.UseSwaggerUI();
+                app.UseSwaggerUI(options =>
+                {
+                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Call Bot v1");
+                });
             //}
 #endif
             app.UseStaticFiles();
@@ -79,6 +90,14 @@ namespace NotificationBot
             app.UseAuthorization();
 
             app.MapControllers();
+
+            app.UseRouting();
+
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
+            });
+
 
             app.MapRazorPages();
 

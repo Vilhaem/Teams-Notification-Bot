@@ -2,7 +2,7 @@
 
 namespace NotificationBot.SpeechService
 {
-    public static class SpeechService
+    public static class SpeechServices
     {
         /// <summary>
         /// Fetch Token from STSURi using subscription key obtained from Azure Speech Service.
@@ -13,21 +13,19 @@ namespace NotificationBot.SpeechService
         /// <returns>Token used to generate text-to-speech file</returns>
         public static async Task<string> FetchTokenAsync(string STSUri, string subscriptionKey, ILogger logger)
         {
-            using (var client = new HttpClient())
+            using var client = new HttpClient();
+            try
             {
-                try
-                {
-                    client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", subscriptionKey);
-                    UriBuilder uriBuilder = new(STSUri);
+                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", subscriptionKey);
+                UriBuilder uriBuilder = new(STSUri);
 
-                    var result = await client.PostAsync(uriBuilder.Uri.AbsoluteUri, null);
-                    logger.LogInformation("\n\n## Token Uri: {0}", uriBuilder.Uri.AbsoluteUri);
-                    logger.LogInformation("\n\n## Fetching Token");
-                    return await result.Content.ReadAsStringAsync();
-                }
-                catch (Exception ex) { throw new Exception(ex.Message, ex); }
-                finally { client.Dispose(); }
+                var result = await client.PostAsync(uriBuilder.Uri.AbsoluteUri, null);
+                logger.LogInformation("\n\n## Token Uri: {0}", uriBuilder.Uri.AbsoluteUri);
+                logger.LogInformation("\n\n## Fetching Token");
+                return await result.Content.ReadAsStringAsync();
             }
+            catch (Exception ex) { throw new Exception(ex.Message, ex); }
+            finally { client.Dispose(); }
         }
 
         /// <summary>
@@ -93,6 +91,8 @@ namespace NotificationBot.SpeechService
                 fileStream.Close();
                 dataStream.Close();
                 response.Dispose();
+                httpRequest.Dispose();
+                client.Dispose();
             }
             return objectId;
         }

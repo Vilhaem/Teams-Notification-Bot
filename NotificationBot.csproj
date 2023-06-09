@@ -4,6 +4,8 @@
     <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+	<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	<DocumentationFile>bin\Lab.Swashbuckle.AspNetCore6.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

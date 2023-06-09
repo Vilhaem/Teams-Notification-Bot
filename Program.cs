@@ -1,5 +1,4 @@
 using NotificationBot;
-using NotificationBot.Bot;
 
 
 var builder = WebApplication.CreateBuilder(args);

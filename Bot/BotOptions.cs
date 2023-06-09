@@ -1,6 +1,5 @@
 ﻿namespace NotificationBot.Bot
 {
-    using Microsoft.Extensions.Configuration;
     public class BotOptions
     {
         public const string Bot = "Bot";
@@ -9,5 +8,8 @@
         public Uri? BaseURL { get; set; }
         public int DurationBeforeVoicemail { get; set; } = 0;
         public int TuningDurationForCorrectVoicemail { get; set; } = 0;
+        public string BotTeamsDisplayName { get; set; } = string.Empty;
+        public string BotTeamsId { get; set; } = string.Empty;
+        public bool UsingHeaderAuth { get; set; } = false;
     }
 }

@@ -1,7 +1,5 @@
 ﻿using Microsoft.Bot.Builder;
-using Microsoft.Graph;
 using Microsoft.Graph.Communications.Core.Notifications;
-using System.Diagnostics;
 
 namespace NotificationBot.Bot
 {
@@ -11,6 +9,13 @@ namespace NotificationBot.Bot
         string UserName { get; }
 
         Task BotProcessNotificationAsync(HttpRequest request, HttpResponse response);
+        /// <summary>
+        /// Calls phone number via GraphAPI
+        /// </summary>
+        Task CallPSTNAsync(string userId, string TenantId, string text, Guid filename);
+        /// <summary>
+        /// Calls Teams user via GraphAPI
+        /// </summary>
         Task CallUserAsync(string userId, string TenantId, string text, Guid filename);
         Task NotificationProcessorOnReceivedAsync(NotificationEventArgs args);
 
