@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Azure.Core;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
@@ -51,11 +52,13 @@ namespace NotificationBot.Controllers
                 $"AppId: {_botoptions.Value.AppId}\n" +
                 $"AppSecret: {_botoptions.Value.AppSecret}\n" +
                 $"BaseURL: {_botoptions.Value.BaseURL}\n" +
+                $"PSTNAppId: {_botoptions.Value.PSTNAppId}\n" +
                 $"DurationBeforeVoicemail: {_botoptions.Value.DurationBeforeVoicemail} seconds\n" +
                 $"TuningDurationForCorrectVoicemail: {_botoptions.Value.TuningDurationForCorrectVoicemail} seconds\n" +
                 $"BotTeamsDisplayName: {_botoptions.Value.BotTeamsDisplayName}\n" +
                 $"BotTeamsId: {_botoptions.Value.BotTeamsId}\n" +
                 $"UsingHeaderAuth: {_botoptions.Value.UsingHeaderAuth}\n" +
+                $"UsingSubscribeTone: {_botoptions.Value.UsingSubscribeTone}\n" +
                 $"ApiKeyName: {_apiOptions.Value.ApiKeyName}\n" +
                 $"ApiKeyValue: {_apiOptions.Value.ApiKeyValue}\n" +
                 $"Speech Key: {_speechOptions.Value.Key}\n" +
@@ -63,7 +66,6 @@ namespace NotificationBot.Controllers
                 $"Speech STSUri: {_speechOptions.Value.STSUri}\n" +
                 $"SpeechSpeedPercentage: {_speechOptions.Value.SpeechSpeedPercentage}";
         }
-
 
         /// <summary>
         /// Calls user via Teams and plays prompt
@@ -207,6 +209,7 @@ namespace NotificationBot.Controllers
             }
             return Ok(
                 $"Calling number '{request.PhoneNumber}'\n" +
+                $"As name: {_botoptions.Value.BotTeamsDisplayName}\n" +
                 $"with TenantId: {request.TenantId}\n" +
                 $"Successful");
         }
@@ -228,6 +231,16 @@ namespace NotificationBot.Controllers
                 _logger.LogInformation("\n\n## Not using header authentication ##");
             }
         }
+
+        // Used for Generating audio files
+        //[HttpPost("generate")]
+        //public async Task GenerateToneAudio([FromBody] string toneText)
+        //{
+        //    var token = await SpeechServices.FetchTokenAsync(STSUri: _speechOptions.Value.STSUri.ToString(), subscriptionKey: _speechOptions.Value.Key, logger: _logger);
+
+        //    // Using "var token" and text from POST to generate text-to-speech file and return name of .wav file
+        //    await SpeechServices.GenerateTextToSpeechAudioFile(text:toneText, token: token, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
+        //}
     }
     /// <summary>
     /// Class of Teams call api request body

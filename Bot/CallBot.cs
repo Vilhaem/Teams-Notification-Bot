@@ -1,42 +1,44 @@
 ﻿namespace NotificationBot.Bot
 {
-    using System;
-    using System.IO;
-    using System.Threading.Tasks;
-    using System.Diagnostics;
-    using System.Net;
     using Azure.Identity;
+    using Microsoft.AspNetCore.Http;
     using Microsoft.Bot.Builder;
+    using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Microsoft.Graph;
-    using Microsoft.Graph.Communications.Common;
+    using Microsoft.Graph.Communications.Client;
     using Microsoft.Graph.Communications.Common.Telemetry;
     using Microsoft.Graph.Communications.Core.Notifications;
     using Microsoft.Graph.Communications.Core.Serialization;
     using NotificationBot.Extensions;
     using NotificationBot.Utility;
-    using Microsoft.Graph.Communications.Client;
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.Extensions.Logging;
+    using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.IO;
+    using System.Net;
+    using System.Threading.Tasks;
 
     public class CallBot : ActivityHandler, ICallBot
     {
+        public const string SubscribeToneAudio = "SubscribeToneAudio";
         // This is used to store the filenames as Key (unique) and madeCall.Id and a stopwatch (for voicemail timing) to keep track.
-        private Dictionary<string , (string, Stopwatch)> callInstances = new();
+        private Dictionary<string, (string, Stopwatch)> callInstances = new();
         public string? UserName { get; private set; } = null;
         private GraphServiceClient? graphClient = null;
-        private readonly Uri? botBaseUri;
         private readonly ILogger<CallBot> _logger;
         private readonly IGraphLogger _graphLogger;
         private readonly NotificationProcessor? notificationProcessor;
         private readonly CommsSerializer? serializer;
         private readonly string AppId;
         private readonly string AppSecret;
+        private readonly Uri? botBaseUri;
+        private readonly string PSTNAppId;
         private readonly int DurationBeforeVoiceMail;
         private readonly int TuningDurationForCorrectVoicemail;
         private readonly string BotTeamsDisplayName;
-        private readonly string BotTeamsId;
+        private readonly bool UsingSubscribeTone;
+        private readonly int SubscribeToneWaitTime;
         public CallBot(IOptions<BotOptions> botoptions, ILogger<CallBot> logger, IGraphLogger graphLogger)
         {
             // If you are unfamiliar to ASP.NET go read up Dependency Injection at least so you know why this constructor makes sense.
@@ -46,10 +48,12 @@
             AppId = botoptions.Value.AppId;
             AppSecret = botoptions.Value.AppSecret;
             botBaseUri = botoptions.Value.BaseURL;
+            PSTNAppId = botoptions.Value.PSTNAppId;
             DurationBeforeVoiceMail = botoptions.Value.DurationBeforeVoicemail;
             TuningDurationForCorrectVoicemail = botoptions.Value.TuningDurationForCorrectVoicemail;
             BotTeamsDisplayName = botoptions.Value.BotTeamsDisplayName;
-            BotTeamsId = botoptions.Value.BotTeamsId;
+            UsingSubscribeTone = botoptions.Value.UsingSubscribeTone;
+            SubscribeToneWaitTime = botoptions.Value.SubscribeToneWaitTime;
             serializer = new CommsSerializer();
             notificationProcessor = new NotificationProcessor(serializer);
             notificationProcessor.OnNotificationReceived += NotificationProcessor_OnNotificationReceived;
@@ -93,7 +97,7 @@
 
                 throw ex;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 _logger.LogError("\n\n## GraphServiceClient creation failed");
                 if (ex.InnerException != null)
@@ -101,7 +105,7 @@
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
 
-                throw new Exception(ex.Message,ex);
+                throw new Exception(ex.Message, ex);
             }
 
 
@@ -151,13 +155,13 @@
                 CallbackUri = new Uri(botBaseUri, "callback").ToString(),
                 TenantId = TenantId,
             };
-            
+
             try
             {
                 _logger.LogInformation("\n\n## Calling user {username}", UserName);
                 // get Call Id
                 var madeCall = await graphClient.Communications.Calls.Request().AddAsync(call);
-                _logger.LogInformation("\n\n## madecall.Id: {callId}",madeCall.Id);
+                _logger.LogInformation("\n\n## madecall.Id: {callId}", madeCall.Id);
                 // Saves the instance of out-going call
                 (string, Stopwatch) entry = new(filename.ToString(), new Stopwatch());
                 callInstances.Add(madeCall.Id, entry);
@@ -185,7 +189,7 @@
         /// <summary>
         /// Calls phone number via GraphAPI (Need to apply for this service; 需要申請才可使用)
         /// </summary>
-        public async Task CallPSTNAsync(string userId, string TenantId, string text, Guid filename)
+        public async Task CallPSTNAsync(string phoneNumber, string TenantId, string text, Guid filename)
         {
             graphClient = CreateGraphServiceClient(TenantId);
             _logger.LogInformation("\n\n## CallPSTNAsync: Creating GraphServiceClient\n");
@@ -204,7 +208,7 @@
                                 "applicationInstance" , new
                                 {
                                     DisplayName = BotTeamsDisplayName,
-                                    Id = AppId,
+                                    Id = PSTNAppId,
                                 }
                             },
                         },
@@ -223,7 +227,7 @@
                                 {
                                     "phone" , new
                                     {
-                                        Id = userId,
+                                        Id = phoneNumber,
                                     }
                                 },
                             },
@@ -257,7 +261,7 @@
                 _logger.LogInformation(
                     "\n\n## PSTN: Calling Phone number {phone number}" +
                     "\n\n## PSTN: Check callId from madecall: {callId}",
-                    userId, madeCall.Id);
+                    phoneNumber, madeCall.Id);
                 // Saves the instance of out-going call
                 (string, Stopwatch) entry = new(filename.ToString(), new Stopwatch());
                 callInstances.Add(madeCall.Id, entry);
@@ -298,6 +302,7 @@
                 response.StatusCode = (int)HttpStatusCode.InternalServerError;
                 await response.WriteAsync(e.ToString()).ConfigureAwait(false);
             }
+
         }
 
         /// <summary>
@@ -326,22 +331,22 @@
         {
             // From NotificationProcessor_OnNotificationReceived then starts to check what type and state the Notification is
 
-            var headers = new[]
-            {
-                new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ScenarioId, new[] { args.ScenarioId.ToString() }),
-                new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ClientRequestId, new[] { args.RequestId.ToString() }),
-                new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.Tenant, new[] { args.TenantId }),
-            };
+            // Not needed
+            //var headers = new[]
+            //{
+            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ScenarioId, new[] { args.ScenarioId.ToString() }),
+            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ClientRequestId, new[] { args.RequestId.ToString() }),
+            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.Tenant, new[] { args.TenantId }),
+            //};
+
             _logger.LogInformation(
                 "\n\n## Processing Notification ##\n\n" +
                 "\n\n## Displaying Information from args" +
-                "\n\n## scenarioId :{scenarioId}," +
-                "\n\n## ClientRequestId: {ClientRequestId}," +
                 "\n\n## args.ResourceData: {ResourceData}\n",
-                headers[0].Value, headers[1].Value, args.ResourceData.ToString());
+                args.ResourceData.ToString());
 
             // This second of delay is so that the beginning of the Prompt isn't cut short.
-            await Task.Delay(1000);
+            //await Task.Delay(1000);
 
             // Call connection/state checks
             if (args.ResourceData is Call call)
@@ -349,53 +354,93 @@
                 // Get callId directly from return URL (which starts after the 22th char)
                 // call.Id doesn't work (is null) 
                 var perCallId = args.Notification.ResourceUrl[22..];
-
-                _logger.LogInformation("\n\n## ResourceURL of args aka Call Id: {ResourceURL}", perCallId);
+                _logger.LogInformation("\n\n## ResourceURL of args aka Call Id: {perCallId}", perCallId);
                 _logger.LogInformation("\n\n## Call state: {state}\n", call.State.ToString());
 
+                // Establishing block
                 if (call.State == CallState.Establishing)
                 {
                     // Begin counting call ringing duration 
                     if (!callInstances[perCallId].Item2.IsRunning)
                     {
                         callInstances[perCallId].Item2.Start();
+                        _logger.LogInformation("\n\n## Call({callid}) begin timer", perCallId);
                     }
                 }
-                if (call.State == CallState.Established && call.MediaState?.Audio == MediaState.Active)
+
+                // Established block
+                if (call.State == CallState.Established)
                 {
-                    // DurationBeforeVoiceMail is defaultly set to Teams default value (20 seconds) + 5s
-                    if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail - 8) && callInstances[perCallId].Item2.Elapsed < TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                    // PlayPrompt block
+                    if (call.MediaState?.Audio == MediaState.Active)
                     {
-                        // This logic check is to help debug voicemail
-                        _logger.LogWarning(
-                        "\n\n##!! Igore below if not debugging for Voicemail !!##\n\n" +
-                        "\n\n## VoiceMail Dubugging Information ##" +
-                        "\n\n## If 'Time Elasped' when the call isn't picked up is just a bit short " +
-                        "\n\n## Ex: Time Elapsed: {elapsed} but DurationBeforeVoicemail is {DurationBeforeVoicemail}" +
-                        "\n\n## Solution: Set DurationBeforeVoicemail to below {elapsed} by 2 or 3 to {newSetTime}\n\n"
-                        , callInstances[perCallId].Item2.Elapsed.TotalSeconds
-                        , DurationBeforeVoiceMail
-                        , callInstances[perCallId].Item2.Elapsed.TotalSeconds
-                        , (int)callInstances[perCallId].Item2.Elapsed.TotalSeconds - 3);
+                        // DurationBeforeVoiceMail is defaultly set to Teams default value (20 seconds) + 5s
+                        if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail - 8) && callInstances[perCallId].Item2.Elapsed < TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                        {
+                            // This logic check is to help debug voicemail
+                            _logger.LogWarning(
+                            "\n\n##!! Igore below if not debugging for Voicemail !!##\n\n" +
+                            "\n\n## VoiceMail Dubugging Information ##" +
+                            "\n\n## If 'Time Elasped' when the call isn't picked up is just a bit short " +
+                            "\n\n## Ex: Time Elapsed: {elapsed} but DurationBeforeVoicemail is {DurationBeforeVoicemail}" +
+                            "\n\n## Solution: Set DurationBeforeVoicemail to below {elapsed} by 2 or 3 to {newSetTime}\n\n"
+                            , callInstances[perCallId].Item2.Elapsed.TotalSeconds
+                            , DurationBeforeVoiceMail
+                            , callInstances[perCallId].Item2.Elapsed.TotalSeconds
+                            , (int)callInstances[perCallId].Item2.Elapsed.TotalSeconds - 3);
+                        }
+                        else if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                        {
+                            _logger.LogInformation(
+                                "\n\n## User didn't pick up phone" +
+                                "\n\n## Play Prompt to voicemail.");
+                            // 9 seconds (default) seems to be a good duration for Teams voicemail to be prepare for recieving the prompt.
+                            // However this depends on user name length as a main factor
+                            // But still play around and test
+                            await Task.Delay(TuningDurationForCorrectVoicemail * 1000); // Milliseconds so duration * 1000 
+                        }
+                        await BotPlayPromptAsync(perCallId).ConfigureAwait(false);
                     }
-                    else if (callInstances[perCallId].Item2.Elapsed > TimeSpan.FromSeconds(DurationBeforeVoiceMail))
+                    // Init call to be Subscribe to tone
+                    else if (UsingSubscribeTone && call.ToneInfo is null)
                     {
+                        _logger.LogInformation("\n\n## Enter Subscribe to tone block");
+                        await graphClient.Communications.Calls[perCallId].SubscribeToTone(clientContext: perCallId).Request().PostAsync();
+                        _logger.LogInformation("\n\n## Subscribe to tone to call: {callid}", perCallId);
+                        await Task.Delay(3000);
+                        await BotPlayPromptAsync(callId: perCallId, filename: SubscribeToneAudio);
+                    }
+                    // Check Subscribe to tone input
+                    else if (call.ToneInfo is not null)
+                    {
+                        var tone = call.ToneInfo.Tone.Value;
                         _logger.LogInformation(
-                            "\n\n## User didn't pick up phone" +
-                            "\n\n## Play Prompt to voicemail.");
-                        // 9 seconds (default) seems to be a good duration for Teams voicemail to be prepare for recieving the prompt.
-                        // However this depends on user name length as a main factor
-                        // But still play around and test
-                        await Task.Delay(TuningDurationForCorrectVoicemail*1000); // Milliseconds so duration * 1000 
+                            "\n\n## ToneInfo detected {tone}"
+                            ,tone);
+                        
+                        switch (tone)
+                        {
+                            case Tone.Tone1:
+                                // do business logic 1 ex. confirm and ends call
+                                _logger.LogInformation("\n\n## Message Confirmed. Hanging up call");
+                                await BotUtils.EndCall(perCallId, callInstances[perCallId].Item1, _logger, graphClient);
+                                // Release memory from callInstances for finished operation
+                                callInstances.Remove(perCallId);
+                                break;
+                            case Tone.Tone2:
+                                // do business logic 2 ex. play prompt again
+                                await BotPlayPromptAsync(perCallId);
+                                // restart wait timer so call doesn't end mid prompt
+                                callInstances[perCallId].Item2.Restart();
+                                await Task.Delay(3000);
+                                await BotPlayPromptAsync(callId: perCallId, filename: SubscribeToneAudio);
+                                break;
+                        }
                     }
-
-                    await BotPlayPromptAsync(perCallId).ConfigureAwait(false);
-
                 }
-
                 _logger.LogInformation(
                     "\n\n## Call instance: {instance}\n" +
-                    "\n\n## Time Elapsed: {elapsed}\n",
+                    "\n## Time Elapsed: {elapsed}\n",
                     callInstances[perCallId].Item1,
                     callInstances[perCallId].Item2.Elapsed.TotalSeconds);
             }
@@ -415,57 +460,49 @@
                 }
                 else if (playPromptOperation.Status == OperationStatus.Completed)
                 {
-
-                    // The playPromptOperation has been completed
-                    // First delete the generated .wav file
-                    DeleteAudioFile(callInstances[playPromptOperation.ClientContext].Item1);
                     _logger.LogInformation("\n\n## Prompt finished playing\n");
+                    var promptCallId = playPromptOperation.ClientContext;
+                    if (!UsingSubscribeTone)
+                    {
+                        // Hang up the call after prompt is played (orginal no subscribe to tone behavior)
+                        await BotUtils.EndCall(promptCallId, callInstances[promptCallId].Item1, _logger, graphClient);
+                    }
+                    else
+                    {
 
-                    // Hang up the call
-                    await graphClient.Communications.Calls[playPromptOperation.ClientContext].Request().DeleteAsync();
+                        // Wait for user to press tone and perform corresponding function
+                        callInstances[promptCallId].Item2.Restart();
 
-                    // Release memory from _callInstances for finished operation
-                    callInstances.Remove(callInstances[playPromptOperation.ClientContext].Item1);
+                        // A set timer until call ends
+                        while(callInstances[promptCallId].Item2.Elapsed.TotalSeconds <= SubscribeToneWaitTime)
+                        {
+                            await Task.Delay(1000);
+                        }
+                        _logger.LogInformation("\n\n ## Tone waiting timed out");
+                        await BotUtils.EndCall(promptCallId, callInstances[promptCallId].Item1, _logger, graphClient);
+                        // Release memory from callInstances for finished operation
+                        callInstances.Remove(promptCallId);
+                    }
                 }
             }
 
-        }
-        /// <summary>
-        /// Deletes audio wav file after it has served it's purpose
-        /// </summary>
-        private void DeleteAudioFile(string fileId)
-        {
-            // Windows server path
-            var filePath = $@"C:\home\site\wwwroot\wwwroot\{fileId}.wav";
-            try
-            {
-                if (System.IO.File.Exists(filePath))
-                {
-                    _logger.LogInformation("\n\n## Deleting {filename}", filePath);
-                    System.IO.File.Delete(filePath);
-                }
-                else
-                {
-                    _logger.LogError("\n\n## This File ({filename}) doesn't exist.", filePath);
-                }
-            }
-            catch (Exception ex) 
-            {
-                _logger.LogError("Error: {ex.message}",ex.Message);
-                throw new Exception(ex.Message,ex);
-            }
-            
         }
         /// <summary>
         /// Plays the corresponding audio wav file to the correct call
         /// </summary>
-        private async Task BotPlayPromptAsync(string callId)
+        private async Task BotPlayPromptAsync(string callId, string filename = "")
         {
-            _logger.LogInformation("\n\n## Accessing item in List (_callInstances)");
-            _logger.LogInformation("\n\n## Found key: {key}", callId);
+            if (filename is "")
+            {
+                //_logger.LogInformation("\n\n## Accessing item in List (_callInstances)");
+                //_logger.LogInformation("\n\n## Found key: {key}", callId);
 
-            // Get corresponding audio file ID from each call Id
-            var filename = callInstances[callId].Item1;
+                // Get corresponding audio file ID from each call Id
+                filename = callInstances[callId].Item1;
+            }
+
+            _logger.LogInformation("\n\n## Playing Prompt with filename: {filename} ##\n\n",filename);
+
             var prompts = new Prompt[]
             {
                 new MediaPrompt
@@ -477,6 +514,7 @@
                     },
                 },
             };
+
 
             try
             {
