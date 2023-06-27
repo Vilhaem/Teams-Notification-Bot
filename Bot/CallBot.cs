@@ -414,9 +414,7 @@
                     else if (call.ToneInfo is not null)
                     {
                         var tone = call.ToneInfo.Tone.Value;
-                        _logger.LogInformation(
-                            "\n\n## ToneInfo detected {tone}"
-                            ,tone);
+                        _logger.LogInformation("\n\n## ToneInfo detected {tone}",tone);
                         
                         switch (tone)
                         {
@@ -424,12 +422,14 @@
                                 // do business logic 1 ex. confirm and ends call
                                 _logger.LogInformation("\n\n## Message Confirmed. Hanging up call");
                                 await BotUtils.EndCall(perCallId, callInstances[perCallId].Item1, _logger, graphClient);
+
                                 // Release memory from callInstances for finished operation
                                 callInstances.Remove(perCallId);
                                 break;
                             case Tone.Tone2:
                                 // do business logic 2 ex. play prompt again
                                 await BotPlayPromptAsync(perCallId);
+
                                 // restart wait timer so call doesn't end mid prompt
                                 callInstances[perCallId].Item2.Restart();
                                 await Task.Delay(3000);
@@ -494,9 +494,6 @@
         {
             if (filename is "")
             {
-                //_logger.LogInformation("\n\n## Accessing item in List (_callInstances)");
-                //_logger.LogInformation("\n\n## Found key: {key}", callId);
-
                 // Get corresponding audio file ID from each call Id
                 filename = callInstances[callId].Item1;
             }
