@@ -74,7 +74,7 @@ namespace NotificationBot.SpeechService
 
             // Local Debug Line
             // Replace the file path with your local systems
-            //using FileStream fileStream = new($@"C:\Users\a-liuwilliam\OneDrive - Microsoft\Desktop\ASP.NET webapp\Notification-Bot\wwwroot\{objectId}.wav", FileMode.Create, FileAccess.Write, FileShare.Write);
+             //using FileStream fileStream = new($@"C:\Users\a-liuwilliam\OneDrive - Microsoft\Desktop\ASP.NET webapp\Notification-Bot\wwwroot\{objectId}.wav", FileMode.Create, FileAccess.Write, FileShare.Write);
 
             try
             {

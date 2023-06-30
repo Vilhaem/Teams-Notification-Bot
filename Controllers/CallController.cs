@@ -30,7 +30,12 @@ namespace NotificationBot.Controllers
         /// <param name="botOptions"></param>
         /// <param name="apiOptions"></param>
         /// <param name="logger"></param>
-        public CallController(ICallBot bot, IOptions<SpeechServiceOptions> speechOptions, IOptions<BotOptions> botOptions, IOptions<ApiKeyOption> apiOptions,ILogger<CallController> logger)
+        public CallController(
+            ICallBot bot, 
+            IOptions<SpeechServiceOptions> speechOptions, 
+            IOptions<BotOptions> botOptions, 
+            IOptions<ApiKeyOption> apiOptions,
+            ILogger<CallController> logger)
         {
             _bot = bot;
             _speechOptions = speechOptions;
@@ -52,7 +57,6 @@ namespace NotificationBot.Controllers
                 $"AppId: {_botoptions.Value.AppId}\n" +
                 $"AppSecret: {_botoptions.Value.AppSecret}\n" +
                 $"BaseURL: {_botoptions.Value.BaseURL}\n" +
-                $"PSTNAppId: {_botoptions.Value.PSTNAppId}\n" +
                 $"DurationBeforeVoicemail: {_botoptions.Value.DurationBeforeVoicemail} seconds\n" +
                 $"TuningDurationForCorrectVoicemail: {_botoptions.Value.TuningDurationForCorrectVoicemail} seconds\n" +
                 $"BotTeamsDisplayName: {_botoptions.Value.BotTeamsDisplayName}\n" +
@@ -106,7 +110,7 @@ namespace NotificationBot.Controllers
             catch (ServiceException ex)
             {
                 _logger.LogError("\n\n## This is a ServiceException");
-                if (ex.InnerException != null) 
+                if (ex.InnerException is not null) 
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -115,7 +119,7 @@ namespace NotificationBot.Controllers
             catch (NullReferenceException ex)
             {
                 _logger.LogError("\n\n## This is a NullReferenceException");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -128,7 +132,7 @@ namespace NotificationBot.Controllers
             catch (Exception ex)
             {
                 _logger.LogError("\n\n## This is a Exception of no particular type");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -180,7 +184,7 @@ namespace NotificationBot.Controllers
             catch (ServiceException ex)
             {
                 _logger.LogError("\n\n## This is a ServiceException");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -189,7 +193,7 @@ namespace NotificationBot.Controllers
             catch (NullReferenceException ex)
             {
                 _logger.LogError("\n\n## This is a NullReferenceException");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -202,7 +206,7 @@ namespace NotificationBot.Controllers
             catch (Exception ex)
             {
                 _logger.LogError("\n\n## This is a Exception of no particular type");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { return BadRequest(ex.InnerException.Message); }
                 else
                 { return BadRequest(ex.Message); }
@@ -239,7 +243,7 @@ namespace NotificationBot.Controllers
         //    var token = await SpeechServices.FetchTokenAsync(STSUri: _speechOptions.Value.STSUri.ToString(), subscriptionKey: _speechOptions.Value.Key, logger: _logger);
 
         //    // Using "var token" and text from POST to generate text-to-speech file and return name of .wav file
-        //    await SpeechServices.GenerateTextToSpeechAudioFile(text:toneText, token: token, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
+        //    await SpeechServices.GenerateTextToSpeechAudioFile(text: toneText, token: token, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
         //}
     }
     /// <summary>

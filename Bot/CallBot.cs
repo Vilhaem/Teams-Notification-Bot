@@ -22,6 +22,7 @@
     public class CallBot : ActivityHandler, ICallBot
     {
         public const string SubscribeToneAudio = "SubscribeToneAudio";
+        public const string NoFunctionTone = "NoFunctionTone";
         // This is used to store the filenames as Key (unique) and madeCall.Id and a stopwatch (for voicemail timing) to keep track.
         private Dictionary<string, (string, Stopwatch)> callInstances = new();
         public string? UserName { get; private set; } = null;
@@ -29,7 +30,6 @@
         private readonly ILogger<CallBot> _logger;
         private readonly IGraphLogger _graphLogger;
         private readonly NotificationProcessor? notificationProcessor;
-        private readonly CommsSerializer? serializer;
         private readonly string AppId;
         private readonly string AppSecret;
         private readonly Uri? botBaseUri;
@@ -39,7 +39,10 @@
         private readonly string BotTeamsDisplayName;
         private readonly bool UsingSubscribeTone;
         private readonly int SubscribeToneWaitTime;
-        public CallBot(IOptions<BotOptions> botoptions, ILogger<CallBot> logger, IGraphLogger graphLogger)
+        public CallBot(
+            IOptions<BotOptions> botoptions,
+            ILogger<CallBot> logger,
+            IGraphLogger graphLogger)
         {
             // If you are unfamiliar to ASP.NET go read up Dependency Injection at least so you know why this constructor makes sense.
             var name = this.GetType().Assembly.GetName().Name;
@@ -54,8 +57,7 @@
             BotTeamsDisplayName = botoptions.Value.BotTeamsDisplayName;
             UsingSubscribeTone = botoptions.Value.UsingSubscribeTone;
             SubscribeToneWaitTime = botoptions.Value.SubscribeToneWaitTime;
-            serializer = new CommsSerializer();
-            notificationProcessor = new NotificationProcessor(serializer);
+            notificationProcessor = new NotificationProcessor(new CommsSerializer());
             notificationProcessor.OnNotificationReceived += NotificationProcessor_OnNotificationReceived;
         }
 
@@ -90,7 +92,7 @@
             catch (ServiceException ex)
             {
                 _logger.LogError("\n\n## GraphServiceClient creation failed");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
@@ -100,7 +102,7 @@
             catch (Exception ex)
             {
                 _logger.LogError("\n\n## GraphServiceClient creation failed");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
@@ -108,53 +110,8 @@
                 throw new Exception(ex.Message, ex);
             }
 
-
-            // Instantiate Call Object
-            var call = new Call
-            {
-                // Your Bot
-                Source = new ParticipantInfo
-                {
-                    Identity = new IdentitySet
-                    {
-                        Application = new Identity
-                        {
-                            DisplayName = BotTeamsDisplayName,
-                            Id = AppId,
-                        }
-                    }
-                },
-                // User being called
-                Targets = new List<InvitationParticipantInfo>
-                {
-                    new InvitationParticipantInfo
-                    {
-                        Identity = new IdentitySet
-                        {
-                            User = new Identity
-                            {
-                                Id = userId,
-                            }
-                        }
-                    }
-
-                },
-                MediaConfig = new ServiceHostedMediaConfig()
-                {
-                    PreFetchMedia = new List<MediaInfo>()
-                    {
-                        new MediaInfo()
-                        {
-                            ResourceId = Guid.NewGuid().ToString(),
-                            Uri = new Uri(botBaseUri, $"{filename}.wav").ToString(),
-                        }
-                    }
-                },
-                RequestedModalities = new List<Modality> { Modality.Audio },
-                Direction = CallDirection.Outgoing,
-                CallbackUri = new Uri(botBaseUri, "callback").ToString(),
-                TenantId = TenantId,
-            };
+            var call = CreateCallForTeams(callerId: AppId, callee: userId, filename: filename.ToString(), tenantId: TenantId);
+            
 
             try
             {
@@ -168,7 +125,7 @@
             }
             catch (ServiceException ex)
             {
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
@@ -177,7 +134,7 @@
             catch (Exception ex)
             {
                 _logger.LogError("\n\n## GraphServiceClient creation failed");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
@@ -195,63 +152,7 @@
             _logger.LogInformation("\n\n## CallPSTNAsync: Creating GraphServiceClient\n");
 
             // Instantiate Call Object
-            var call = new Call
-            {
-                // Your Bot
-                Source = new ParticipantInfo
-                {
-                    Identity = new IdentitySet
-                    {
-                        AdditionalData = new Dictionary<string, object>
-                        {
-                            {
-                                "applicationInstance" , new
-                                {
-                                    DisplayName = BotTeamsDisplayName,
-                                    Id = PSTNAppId,
-                                }
-                            },
-                        },
-
-                    }
-                },
-                // User being called
-                Targets = new List<InvitationParticipantInfo>
-                {
-                    new InvitationParticipantInfo
-                    {
-                        Identity = new IdentitySet
-                        {
-                            AdditionalData = new Dictionary<string, object>
-                            {
-                                {
-                                    "phone" , new
-                                    {
-                                        Id = phoneNumber,
-                                    }
-                                },
-                            },
-
-                        }
-                    }
-
-                },
-                MediaConfig = new ServiceHostedMediaConfig()
-                {
-                    PreFetchMedia = new List<MediaInfo>()
-                    {
-                        new MediaInfo()
-                        {
-                            ResourceId = Guid.NewGuid().ToString(),
-                            Uri = new Uri(botBaseUri, $"{filename}.wav").ToString(),
-                        }
-                    }
-                },
-                RequestedModalities = new List<Modality> { Modality.Audio },
-                Direction = CallDirection.Outgoing,
-                CallbackUri = new Uri(botBaseUri, "callback").ToString(),
-                TenantId = TenantId,
-            };
+            var call = CreateCallForPSTN(callerId: PSTNAppId, callee: phoneNumber, filename: filename.ToString(), tenantId:TenantId);
 
             try
             {
@@ -268,7 +169,7 @@
             }
             catch (ServiceException ex)
             {
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.Message); }
@@ -277,7 +178,7 @@
             catch (Exception ex)
             {
                 _logger.LogError("\n\n## PSTN: GraphServiceClient creation failed");
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## PSTN: Error message: {ex.Message}", ex.Message); }
@@ -330,14 +231,6 @@
         public async Task NotificationProcessorOnReceivedAsync(NotificationEventArgs args)
         {
             // From NotificationProcessor_OnNotificationReceived then starts to check what type and state the Notification is
-
-            // Not needed
-            //var headers = new[]
-            //{
-            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ScenarioId, new[] { args.ScenarioId.ToString() }),
-            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.ClientRequestId, new[] { args.RequestId.ToString() }),
-            //    new KeyValuePair<string, IEnumerable<string>>(HttpConstants.HeaderNames.Tenant, new[] { args.TenantId }),
-            //};
 
             _logger.LogInformation(
                 "\n\n## Processing Notification ##\n\n" +
@@ -428,10 +321,18 @@
                                 break;
                             case Tone.Tone2:
                                 // do business logic 2 ex. play prompt again
+                                _logger.LogInformation("\n\n## Replaying Message");
                                 await BotPlayPromptAsync(perCallId);
 
                                 // restart wait timer so call doesn't end mid prompt
                                 callInstances[perCallId].Item2.Restart();
+                                await Task.Delay(3000);
+                                await BotPlayPromptAsync(callId: perCallId, filename: SubscribeToneAudio);
+                                break;
+                            default:
+                                _logger.LogInformation("\n\n## No function tone pressed");
+                                callInstances[perCallId].Item2.Restart();
+                                await BotPlayPromptAsync(perCallId, filename: NoFunctionTone);
                                 await Task.Delay(3000);
                                 await BotPlayPromptAsync(callId: perCallId, filename: SubscribeToneAudio);
                                 break;
@@ -524,13 +425,122 @@
             }
             catch (ServiceException ex)
             {
-                if (ex.InnerException != null)
+                if (ex.InnerException is not null)
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.InnerException.Message); }
                 else
                 { _logger.LogError("\n\n## Error message: {ex.Message}", ex.Message); }
 
                 throw ex;
             }
+        }
+        private Call CreateCallForTeams(string callerId, string callee, string filename, string tenantId)
+        {
+            return new Call
+            {
+                // Your Bot
+                Source = new ParticipantInfo
+                {
+                    Identity = new IdentitySet
+                    {
+                        Application = new Identity
+                        {
+                            DisplayName = BotTeamsDisplayName,
+                            // Call from Azure Bot
+                            Id = callerId,
+                        }
+                    }
+                },
+                // User being called
+                Targets = new List<InvitationParticipantInfo>
+                {
+                    new InvitationParticipantInfo
+                    {
+                        Identity = new IdentitySet
+                        {
+                            User = new Identity
+                            {
+                                Id = callee,
+                            }
+                        }
+                    }
+
+                },
+                MediaConfig = new ServiceHostedMediaConfig()
+                {
+                    PreFetchMedia = new List<MediaInfo>()
+                    {
+                        new MediaInfo()
+                        {
+                            ResourceId = Guid.NewGuid().ToString(),
+                            Uri = new Uri(botBaseUri, $"{filename}.wav").ToString(),
+                        }
+                    }
+                },
+                RequestedModalities = new List<Modality> { Modality.Audio },
+                Direction = CallDirection.Outgoing,
+                CallbackUri = new Uri(botBaseUri, "callback").ToString(),
+                TenantId = tenantId,
+            };
+        }
+        private Call CreateCallForPSTN(string callerId, string callee, string filename, string tenantId)
+        {
+            return new Call
+            {
+                // Your Bot
+                Source = new ParticipantInfo
+                {
+                    Identity = new IdentitySet
+                    {
+                        AdditionalData = new Dictionary<string, object>
+                        {
+                            {
+                                "applicationInstance" , new
+                                {
+                                    DisplayName = BotTeamsDisplayName,
+                                    Id = callerId,
+                                }
+                            },
+                        },
+
+                    }
+                },
+                // User being called
+                Targets = new List<InvitationParticipantInfo>
+                {
+                    new InvitationParticipantInfo
+                    {
+                        Identity = new IdentitySet
+                        {
+                            AdditionalData = new Dictionary<string, object>
+                            {
+                                {
+                                    "phone" , new
+                                    {
+                                        Id = callee,
+                                    }
+                                },
+                            },
+
+                        }
+                    }
+
+                },
+                MediaConfig = new ServiceHostedMediaConfig()
+                {
+                    PreFetchMedia = new List<MediaInfo>()
+                    {
+                        new MediaInfo()
+                        {
+                            ResourceId = Guid.NewGuid().ToString(),
+                            Uri = new Uri(botBaseUri, $"{filename}.wav").ToString(),
+                        }
+                    }
+                },
+                RequestedModalities = new List<Modality> { Modality.Audio },
+                Direction = CallDirection.Outgoing,
+                CallbackUri = new Uri(botBaseUri, "callback").ToString(),
+                TenantId = tenantId,
+            };
         }
     }
 }
