@@ -28,6 +28,7 @@ namespace NotificationBot
             services.AddOptions();
             services.AddRazorPages();
             services.Configure<BotOptions>(_configuration.GetSection(BotOptions.Bot));
+            services.Configure<ToneOptions>(_configuration.GetSection(ToneOptions.Tone));
             services.Configure<SpeechServiceOptions>(_configuration.GetSection(SpeechServiceOptions.Speech));
             services.Configure<ApiKeyOption>(_configuration.GetSection(ApiKeyOption.ApiKey));
             services.AddSingleton<IGraphLogger>(this._graphLogger);

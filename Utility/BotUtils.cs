@@ -44,7 +44,7 @@ namespace NotificationBot.Utility
         {
             // Windows server path
             var filePath = $@"C:\home\site\wwwroot\wwwroot\{fileId}.wav";
-            // Linux would need to find out
+            // Linuxor ot would need to find out
 
             try
             {

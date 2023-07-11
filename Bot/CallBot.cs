@@ -39,13 +39,16 @@
         private readonly string BotTeamsDisplayName;
         private readonly bool UsingSubscribeTone;
         private readonly int SubscribeToneWaitTime;
+        private readonly IOptions<ToneOptions> toneOptions;
         public CallBot(
             IOptions<BotOptions> botoptions,
+            IOptions<ToneOptions> toneoptions,
             ILogger<CallBot> logger,
             IGraphLogger graphLogger)
         {
             // If you are unfamiliar to ASP.NET go read up Dependency Injection at least so you know why this constructor makes sense.
             var name = this.GetType().Assembly.GetName().Name;
+            toneOptions = toneoptions;
             _logger = logger;
             _graphLogger = graphLogger;
             AppId = botoptions.Value.AppId;
@@ -314,6 +317,9 @@
                             case Tone.Tone1:
                                 // do business logic 1 ex. confirm and ends call
                                 _logger.LogInformation("\n\n## Message Confirmed. Hanging up call");
+
+                                // do something
+
                                 await BotUtils.EndCall(perCallId, callInstances[perCallId].Item1, _logger, graphClient);
 
                                 // Release memory from callInstances for finished operation
