@@ -236,15 +236,26 @@ namespace NotificationBot.Controllers
             }
         }
 
-        // Used for Generating audio files
-        //[HttpPost("generate")]
-        //public async Task GenerateToneAudio([FromBody] string toneText)
-        //{
-        //    var token = await SpeechServices.FetchTokenAsync(STSUri: _speechOptions.Value.STSUri.ToString(), subscriptionKey: _speechOptions.Value.Key, logger: _logger);
+        /// <summary>
+        /// Used for Generating utility audio files
+        /// </summary>
+        /// <param name="text"></param>
+        /// <param name="filename"></param>
+        /// <returns></returns>
+        [HttpPost("generate")]
+        public async Task<IActionResult> GenerateUtilityAudio([FromBody] string text, string filename)
+        {
+            try
+            {
+                var token = await SpeechServices.FetchTokenAsync(STSUri: _speechOptions.Value.STSUri.ToString(), subscriptionKey: _speechOptions.Value.Key, logger: _logger);
 
-        //    // Using "var token" and text from POST to generate text-to-speech file and return name of .wav file
-        //    await SpeechServices.GenerateTextToSpeechAudioFile(text: toneText, token: token, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
-        //}
+                // Using "var token" and text from POST to generate text-to-speech file and return name of .wav file
+                await SpeechServices.GenerateToneUtliltyAudio(text: text, token: token, filename: filename, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+            return Ok($"Generate Utility audio clips \"{filename}\" \nSuccess");
+        }
     }
     /// <summary>
     /// Class of Teams call api request body
