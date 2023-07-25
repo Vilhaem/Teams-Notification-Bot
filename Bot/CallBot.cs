@@ -313,11 +313,17 @@
                         var tone = call.ToneInfo.Tone.Value;
                         _logger.LogInformation("\n\n## ToneInfo detected {tone}",tone);
                         
+
+                        // SubscribeTone Customize 
                         switch (tone)
                         {
                             case Tone.Tone1:
+                                // if tone1.wav IsExist -> do logic
+                                // else play no function audio
                                 // do business logic 1 ex. confirm and ends call
                                 _logger.LogInformation("\n\n## Message Confirmed. Hanging up call");
+                                
+                                // play "你按數字一，功能是xyz"
 
                                 // do something
 
@@ -375,6 +381,7 @@
                     {
                         // Hang up the call after prompt is played (orginal no subscribe to tone behavior)
                         await BotUtils.EndCall(promptCallId, callInstances[promptCallId].Item1, _logger, graphClient);
+                        callInstances.Remove(promptCallId);
                     }
                     else
                     {
