@@ -7,6 +7,8 @@
     using Microsoft.AspNetCore.Http.Extensions;
     public static class HttpExtensions
     {
+        // 如果你好奇這是啥，這都不用動也不會用到
+        // This won't be used and shouldn't be modified
         public static HttpRequestMessage CreateRequestMessage(this HttpRequest request)
         {
             var displayUri = request.GetDisplayUrl();

@@ -16,7 +16,7 @@ namespace NotificationBot.Controllers
         [HttpPost,HttpGet]
         public async Task HandleCallbackRequestAsync()
         {
-            _logger.LogInformation("\n\n## Handling callback");
+            _logger.LogInformation("\n\n## Receiving callback");
             await _bot.BotProcessNotificationAsync(Request, Response);
         }
     }

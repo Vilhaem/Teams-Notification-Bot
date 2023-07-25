@@ -290,9 +290,10 @@
                             _logger.LogInformation(
                                 "\n\n## User didn't pick up phone" +
                                 "\n\n## Play Prompt to voicemail.");
-                            // 9 seconds (default) seems to be a good duration for Teams voicemail to be prepare for recieving the prompt.
-                            // However this depends on user name length as a main factor
-                            // But still play around and test
+
+                            // Important!!
+                            // TuningDurationForCorrectVoicemail depends on user name length as a main factor
+                            // Play around and test for corrct voicemail
                             await Task.Delay(TuningDurationForCorrectVoicemail * 1000); // Milliseconds so duration * 1000 
                         }
                         await BotPlayPromptAsync(perCallId).ConfigureAwait(false);
@@ -335,6 +336,7 @@
                                 await Task.Delay(3000);
                                 await BotPlayPromptAsync(callId: perCallId, filename: SubscribeToneAudio);
                                 break;
+
                             default:
                                 _logger.LogInformation("\n\n## No function tone pressed");
                                 callInstances[perCallId].Item2.Restart();

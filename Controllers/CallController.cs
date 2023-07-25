@@ -1,6 +1,4 @@
-﻿using Azure.Core;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Routing;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using NotificationBot.ApiKey;
@@ -57,6 +55,7 @@ namespace NotificationBot.Controllers
                 $"AppId: {_botoptions.Value.AppId}\n" +
                 $"AppSecret: {_botoptions.Value.AppSecret}\n" +
                 $"BaseURL: {_botoptions.Value.BaseURL}\n" +
+                $"PSTNAppId: {_botoptions.Value.PSTNAppId}\n" +
                 $"DurationBeforeVoicemail: {_botoptions.Value.DurationBeforeVoicemail} seconds\n" +
                 $"TuningDurationForCorrectVoicemail: {_botoptions.Value.TuningDurationForCorrectVoicemail} seconds\n" +
                 $"BotTeamsDisplayName: {_botoptions.Value.BotTeamsDisplayName}\n" +
@@ -198,7 +197,7 @@ namespace NotificationBot.Controllers
                 else
                 { return BadRequest(ex.Message); }
             }
-            catch(InvalidOperationException ex)
+            catch (InvalidOperationException ex)
             {
                 _logger.LogError("\n\n## This is a InvalidOperationException");
                 return BadRequest(ex.Message);
@@ -236,26 +235,7 @@ namespace NotificationBot.Controllers
             }
         }
 
-        /// <summary>
-        /// Used for Generating utility audio files
-        /// </summary>
-        /// <param name="text"></param>
-        /// <param name="filename"></param>
-        /// <returns></returns>
-        [HttpPost("generate")]
-        public async Task<IActionResult> GenerateUtilityAudio([FromBody] string text, string filename)
-        {
-            try
-            {
-                var token = await SpeechServices.FetchTokenAsync(STSUri: _speechOptions.Value.STSUri.ToString(), subscriptionKey: _speechOptions.Value.Key, logger: _logger);
-
-                // Using "var token" and text from POST to generate text-to-speech file and return name of .wav file
-                await SpeechServices.GenerateToneUtliltyAudio(text: text, token: token, filename: filename, endPointUri: _speechOptions.Value.Endpoint, logger: _logger);
-            }
-            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
-            catch (Exception ex) { return BadRequest(ex.Message); }
-            return Ok($"Generate Utility audio clips \"{filename}\" \nSuccess");
-        }
+        
     }
     /// <summary>
     /// Class of Teams call api request body

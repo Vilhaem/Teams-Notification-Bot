@@ -7,6 +7,7 @@ using NotificationBot.Bot;
 using NotificationBot.SpeechService;
 using NotificationBot.ApiKey;
 using System.Reflection;
+using NotificationBot.Swagger;
 //using System.Collections.Concurrent;
 
 namespace NotificationBot
@@ -59,9 +60,11 @@ namespace NotificationBot
                         Name = "Example License",
                         Url = new Uri("https://example.com/license")
                     }
-                });
+                }
+                );
                 var xmlFilename = Path.Combine(AppContext.BaseDirectory, "Lab.Swashbuckle.AspNetCore6.xml");
                 options.IncludeXmlComments(xmlFilename);
+                options.ParameterFilter<UtilityAudioParameterFilter>();
             });
 
             //services.AddTransient<IBot,MessageBot>();   
